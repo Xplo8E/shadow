@@ -43,11 +43,42 @@ static intptr_t replaced_dyld_get_image_vmaddr_slide(uint32_t image_index) {
 static const char* (*original_dyld_get_image_name)(uint32_t image_index);
 static const char* replaced_dyld_get_image_name(uint32_t image_index) {
     if(isCallerTweak()) {
-        return original_dyld_get_image_name(image_index);
+        const char* name = original_dyld_get_image_name(image_index);
+        // NSLog(@"[Shadow Debug] Tweak caller - Image name for index %d: %s", image_index, name ? name : "NULL");
+        return name;
     }
 
     NSArray* _dyld_collection = [_shdw_dyld_collection copy];
-    return image_index < [_dyld_collection count] ? [_dyld_collection[image_index][@"name"] fileSystemRepresentation] : NULL;
+    const char* originalName = original_dyld_get_image_name(image_index);
+    
+    // Check if the original name contains any suspicious strings
+    if (originalName) {
+        NSString* imagePath = @(originalName);
+        NSArray* suspiciousLibraries = @[
+            @"systemhook.dylib", @"SubstrateLoader.dylib", @"SSLKillSwitch2.dylib",
+            @"SSLKillSwitch.dylib", @"MobileSubstrate.dylib", @"TweakInject.dylib",
+            @"CydiaSubstrate", @"cynject", @"CustomWidgetIcons", @"PreferenceLoader",
+            @"RocketBootstrap", @"WeeLoader", @"/.file", @"libhooker",
+            @"SubstrateInserter", @"SubstrateBootstrap", @"ABypass", @"FlyJB",
+            @"Substitute", @"Cephei", @"Electra", @"AppSyncUnified-FrontBoard.dylib",
+            @"Shadow", @"FridaGadget", @"frida", @"libcycript"
+        ];
+        
+        for (NSString* suspicious in suspiciousLibraries) {
+            if ([imagePath.lowercaseString containsString:suspicious.lowercaseString]) {
+                // NSLog(@"[Shadow Debug] Hiding suspicious library: %s", originalName);
+                return "/System/Library/CoreServices/SystemVersion.plist";
+            }
+        }
+    }
+
+    const char* name = image_index < [_dyld_collection count] ? 
+        [_dyld_collection[image_index][@"name"] fileSystemRepresentation] : NULL;
+    
+    // NSLog(@"[Shadow Debug] Regular caller - Image name for index %d: %s", image_index, name ? name : "NULL");
+    // NSLog(@"[Shadow Debug] Original image name for index %d: %s", image_index, originalName ? originalName : "NULL");
+    
+    return name;
 }
 
 static void* (*original_dlopen)(const char* path, int mode);
